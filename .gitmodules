@@ -1,0 +1,3 @@
+[submodule "trgb-libs"]
+	path = trgb-libs
+	url = https://github.com/Xinyuan-LilyGO/T-RGB.git
