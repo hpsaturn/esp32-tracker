@@ -15,6 +15,7 @@ void ui_begin() {
   lv_obj_set_style_text_align(chip_info, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_align(chip_info, LV_ALIGN_TOP_MID, 0, 10);
   lv_label_set_recolor(chip_info, true);
+  lv_obj_set_style_bg_color(chip_info, lv_color_white(), 0);
 
   buf = "Board info : T-RGB-V1.0";
   buf += "\r\nChip: ";

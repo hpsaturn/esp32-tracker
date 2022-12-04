@@ -2,33 +2,12 @@
 
 #include "HTTPClient.h"
 #include "SD_MMC.h"
-#include "WiFi.h"
+// #include "WiFi.h"
 #include "Wire.h"
 #include "display.h"
 
 bool touch_pin_get_int = false;
 void deep_sleep(void);
-void SD_init(void);
-void wifi_task(void *param);
-
-void scan_iic(void) {
-  byte error, address;
-  int nDevices = 0;
-  Serial.println("Scanning for I2C devices ...");
-  for (address = 0x01; address < 0x7f; address++) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      Serial.printf("I2C device found at address 0x%02X\n", address);
-      nDevices++;
-    } else if (error != 2) {
-      Serial.printf("Error %d at address 0x%02X\n", error, address);
-    }
-  }
-  if (nDevices == 0) {
-    Serial.println("No I2C devices found");
-  }
-}
 
 void print_chip_info(void) {
   Serial.print("Chip: ");
@@ -78,11 +57,57 @@ static void lv_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
   lv_msg_send(MSG_TOUCH_UPDATE, &p);
 }
 
+void deep_sleep(void) {
+  // WiFi.disconnect();
+  detachInterrupt(TP_INT_PIN);
+  xl.pinMode8(0, 0xff, INPUT);
+  xl.pinMode8(1, 0xff, INPUT);
+  xl.read_all_reg();
+  // If the SD card is initialized, it needs to be unmounted.
+  if (SD_MMC.cardSize()) SD_MMC.end();
+
+  digitalWrite(EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_OFF_LEVEL);
+
+  Serial.println("Enter deep sleep");
+  delay(100);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)TP_INT_PIN, 0);
+  esp_deep_sleep_start();
+}
+
+void SD_init(void) {
+  xl.digitalWrite(SD_CS_PIN, 1);  // To use SDIO one-line mode, you need to pull the CS pin high
+  SD_MMC.setPins(SD_CLK_PIN, SD_CMD_PIN, SD_D0_PIN);
+  if (!SD_MMC.begin("/sdcard", true)) {
+    Serial.println("Card Mount Failed");
+    return;
+  }
+
+  uint8_t cardType = SD_MMC.cardType();
+  if (cardType == CARD_NONE) {
+    Serial.println("No SD card attached");
+    return;
+  }
+
+  Serial.print("SD Card Type: ");
+
+  if (cardType == CARD_MMC)
+    Serial.println("MMC");
+  else if (cardType == CARD_SD)
+    Serial.println("SDSC");
+  else if (cardType == CARD_SDHC)
+    Serial.println("SDHC");
+  else
+    Serial.println("UNKNOWN");
+
+  uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+  Serial.printf("SD Card Size: %lluMB\n", cardSize);
+}
+
 void setup() {
   static lv_disp_draw_buf_t disp_buf;  // contains internal graphic buffer(s) called draw buffer(s)
   static lv_disp_drv_t disp_drv;       // contains callback functions
   static lv_indev_drv_t indev_drv;
-  // put your setup code here, to run once:
+
   pinMode(BAT_VOLT_PIN, ANALOG);
 
   Wire.begin(IIC_SDA_PIN, IIC_SCL_PIN, (uint32_t)400000);
@@ -169,7 +194,7 @@ void setup() {
   ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
 
   esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 480, 480, logo_img);
-  delay(5000);
+  delay(1000);
 
   lv_init();
   // alloc draw buffers used by LVGL from PSRAM
@@ -196,13 +221,11 @@ void setup() {
   lv_indev_drv_register(&indev_drv);
 
   pinMode(TP_INT_PIN, INPUT_PULLUP);
-  attachInterrupt(
-      TP_INT_PIN, [] { touch_pin_get_int = true; }, FALLING);
+  attachInterrupt(TP_INT_PIN, [] { touch_pin_get_int = true; }, FALLING);
 
   Serial.println("Display LVGL Scatter Chart");
 
   ui_begin();
-  xTaskCreatePinnedToCore(wifi_task, "wifi_task", 1024 * 6, NULL, 1, NULL, 0);
 }
 
 void loop() {
@@ -217,160 +240,5 @@ void loop() {
   }
 }
 
-void SD_init(void) {
-  xl.digitalWrite(SD_CS_PIN, 1);  // To use SDIO one-line mode, you need to pull the CS pin high
-  SD_MMC.setPins(SD_CLK_PIN, SD_CMD_PIN, SD_D0_PIN);
-  if (!SD_MMC.begin("/sdcard", true)) {
-    Serial.println("Card Mount Failed");
-    return;
-  }
 
-  uint8_t cardType = SD_MMC.cardType();
-  if (cardType == CARD_NONE) {
-    Serial.println("No SD card attached");
-    return;
-  }
 
-  Serial.print("SD Card Type: ");
-
-  if (cardType == CARD_MMC)
-    Serial.println("MMC");
-  else if (cardType == CARD_SD)
-    Serial.println("SDSC");
-  else if (cardType == CARD_SDHC)
-    Serial.println("SDHC");
-  else
-    Serial.println("UNKNOWN");
-
-  uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-  Serial.printf("SD Card Size: %lluMB\n", cardSize);
-}
-// This task is used to test WIFI, http test
-void wifi_task(void *param) {
-  String str;
-  HTTPClient http_client;
-  WiFi.disconnect();
-  WiFi.mode(WIFI_STA);
-  delay(100);
-  Serial.println("scan start");
-  str = "wifi scan start";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-  delay(1000);
-  // WiFi.scanNetworks will return the number of networks found
-  int n = WiFi.scanNetworks();
-  Serial.println("scan done");
-  str = "scan done\r\n";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-  if (n == 0) {
-    Serial.println("no networks found");
-    str = "no networks found";
-    lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-  } else {
-    Serial.print(n);
-    Serial.println(" networks found");
-    str += n;
-    str += " networks found\r\n";
-    for (int i = 0; i < n; ++i) {
-      // Print SSID and RSSI for each network found
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.print(WiFi.SSID(i));
-      Serial.print(" (");
-      Serial.print(WiFi.RSSI(i));
-      Serial.print(")");
-      Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? " " : "*");
-
-      str += i + 1;
-      str += ": ";
-      str += WiFi.SSID(i);
-      str += " (";
-      str += WiFi.RSSI(i);
-      str += ")";
-      str += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? " " : "*";
-      str += "\r\n";
-    }
-  }
-  str += "\r\n";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-  Serial.println("");
-  WiFi.disconnect();
-
-  delay(3000);
-  uint32_t last_m = millis();
-  str = "connecting to wifi\r\n";
-  str += "SSID : " WIFI_SSID "\r\n";
-  str += "PASSWORD : " WIFI_PASSWORD "\r\n";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    vTaskDelay(100);
-    str += ".";
-    lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-  }
-  Serial.printf("\r\n-- wifi connect success! --\r\n");
-  Serial.printf("It takes %d milliseconds\r\n", millis() - last_m);
-
-  str += "\r\n-- wifi connect success! --\r\n";
-  str += "It takes ";
-  str += millis() - last_m;
-  str += "milliseconds\r\n";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-
-  delay(2000);
-  String rsp;
-  bool is_get_http = false;
-  do {
-    http_client.begin("https://www.arduino.cc/");
-    str = "getting https://www.arduino.cc/";
-    lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-
-    int http_code = http_client.GET();
-    Serial.println(http_code);
-    if (http_code > 0) {
-      Serial.printf("HTTP get code: %d\n", http_code);
-      if (http_code == HTTP_CODE_OK) {
-        rsp = http_client.getString();
-        Serial.println(rsp);
-        is_get_http = true;
-        str += rsp;
-        lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-
-      } else {
-        Serial.printf("fail to get http client,code:%d\n", http_code);
-      }
-    } else {
-      Serial.println("HTTP GET failed. Try again");
-      str = "HTTP GET failed. Try again";
-      lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-    }
-    delay(3000);
-  } while (!is_get_http);
-  WiFi.disconnect();
-  http_client.end();
-
-  str = "#00ff00 WIFI detection function completed #";
-  lv_msg_send(MSG_WIFI_UPDATE, str.c_str());
-
-  vTaskDelete(NULL);
-}
-
-void deep_sleep(void) {
-  WiFi.disconnect();
-  detachInterrupt(TP_INT_PIN);
-  xl.pinMode8(0, 0xff, INPUT);
-  xl.pinMode8(1, 0xff, INPUT);
-  xl.read_all_reg();
-  // If the SD card is initialized, it needs to be unmounted.
-  if (SD_MMC.cardSize())
-    SD_MMC.end();
-
-  digitalWrite(EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_OFF_LEVEL);
-
-  Serial.println("Enter deep sleep");
-  delay(1000);
-
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)TP_INT_PIN, 0);
-  esp_deep_sleep_start();
-}
