@@ -6,9 +6,6 @@ ESP32S3 Bike computer and GPS tracker using LilyGO T-RGB
 
 The current version is in development.
 
-
-
-
 # Firmware
 
 ## Via PlatformIO (Compiling on Linux, Mac or Windows)
@@ -19,10 +16,9 @@ Clone recursive and upload firmware via USB cable:
 
 ``` bash
 git clone --recursive https://github.com/hpsaturn/esp32-tracker.git
-cd canairio_firmware
+cd esp32-tracker
 pio run --target upload
 ```
-
 
 # Box
 
@@ -34,7 +30,7 @@ https://user-images.githubusercontent.com/423856/201533918-d268d12f-5b67-4009-ac
 ![4daa330e68b9ecd3](https://user-images.githubusercontent.com/423856/205493249-c836f888-3910-4884-8fa8-efc17f45481a.jpg)
 
 
-# Supporting the project
+# Contributions
 
 If you want to contribute to the code or documentation, consider posting a bug report, feature request or a pull request.
 
@@ -53,3 +49,7 @@ Also you can consider make a donation, be a patron or buy a device:
 - Be a patron: [Github Sponsors](https://github.com/sponsors/hpsaturn), [LiberaPay](https://liberapay.com/CanAirIO)
 - **Buy a device**: [CanAirIO Bike in Tindie](https://www.tindie.com/products/hpsaturn/canairio-bike/)
 - Inviting us **a coffee**: [buymeacoffee](https://www.buymeacoffee.com/hpsaturn), [Sponsors](https://github.com/sponsors/hpsaturn?frequency=one-time)
+
+# Credits
+
+Please follow me in [Mastodone](https://mastodon.cloud/@hpsaturn), maybe Twitter.
